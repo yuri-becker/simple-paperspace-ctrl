@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Simple Paperspace Control</title>
+    <link rel="manifest" href="manifest.json"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta name="theme-color" content="#2c2c2c"/>
+    <script>
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js')
+    </script>
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="mask-icon" href="safari-pinned-tab.svg" color="#d55b7a">
+    <meta name="apple-mobile-web-app-title" content="Paperspace Ctrl">
+    <meta name="application-name" content="Paperspace Ctrl">
+    <meta name="msapplication-TileColor" content="#603cba">
+
+    <style>
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            font-size: 20px;
+            background-color: #2c2c2c;
+            color: #fff;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center
+        }
+
+        section {
+            width: 20rem;
+            max-width: calc(100vw - 4rem);
+        }
+
+        #ctrls button.btn {
+            margin: 1rem;
+            padding-right: 1.3rem;
+        }
+
+        input {
+            color: #fff;
+        }
+
+        .input-field .helper-text {
+            color: #F44336;
+        }
+
+        #loader {
+            display: flex;
+            justify-content: center;
+        }
+
+        #ctrls {
+            flex-direction: column;
+            text-align: center;
+        }
+
+        #login {
+            flex-direction: column;
+        }
+
+        .btn-flat {
+            color: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+    <script>
+
+      let machineId = localStorage.getItem('machine-id')
+      let apiKey = localStorage.getItem('api-key')
+
+      const startServer = () => {
+        axios.post(
+          `https://api.paperspace.io/machines/${machineId}/start`,
+          {},
+          {headers: {'x-api-key': apiKey}}
+        )
+          .then(() => {
+            refreshMachineStatus()
+            timeoutStartStopButtons()
+          })
+          .catch(err => window.alert(err))
+
+      }
+
+      const timeoutStartStopButtons = () => {
+        const startbutton = document.getElementById('start-button')
+        const stopbutton = document.getElementById('stop-button')
+
+        startbutton.setAttribute('disabled', true)
+        stopbutton.setAttribute('disabled', true)
+
+        const timeout = setTimeout(() => {
+          startbutton.removeAttribute('disabled')
+          stopbutton.removeAttribute('disabled')
+          clearTimeout(timeout)
+        }, 5000)
+      }
+
+      const stopServer = () => {
+        axios.post(
+          `https://api.paperspace.io/machines/${machineId}/stop`,
+          {},
+          {headers: {'x-api-key': apiKey}}
+        )
+          .then(() => {
+            refreshMachineStatus()
+            timeoutStartStopButtons()
+          })
+          .catch(err => window.alert(err))
+      }
+
+      const submitLoginEnabled = () => {
+        return document.getElementById('machineId').value && !!document.getElementById('api-key').value
+      }
+
+      const refreshSubmitLoginButton = () => {
+        if (submitLoginEnabled()) {
+          document.getElementById('submitLogin').removeAttribute('disabled')
+        } else {
+          document.getElementById('submitLogin').setAttribute('disabled', 'true')
+        }
+      }
+
+      const refreshMachineStatus = () => {
+        const element = document.getElementById('machine-status')
+        element.innerHTML = '...'
+
+        axios.get(
+          `https://api.paperspace.io/machines/getMachinePublic?machineId=${machineId}`,
+          {headers: {'x-api-key': apiKey}}
+        ).then(value => {
+          element.innerHTML = `${value.data.name} - <b>${value.data.state}</b>`
+        })
+      }
+
+      const login = () => {
+        if (submitLoginEnabled()) {
+          document.getElementById('login').style.display = 'none'
+          document.getElementById('loader').style.display = 'flex'
+
+          const machineIdInput = document.getElementById('machineId')
+          const apiKeyInput = document.getElementById('api-key')
+          const machineIdHelper = document.getElementById('machineId_helper')
+          const apiKeyHelper = document.getElementById('api-key_helper')
+          machineIdInput.classList.remove('invalid')
+          apiKeyInput.classList.remove('invalid')
+          machineIdHelper.innerHTML = ''
+          apiKeyHelper.innerHTML = ''
+
+          axios.get(
+            `https://api.paperspace.io/machines/getMachinePublic?machineId=${machineIdInput.value.trim()}`,
+            {headers: {'x-api-key': apiKeyInput.value.trim()}}
+          )
+            .then(() => {
+              machineId = machineIdInput.value.trim()
+              apiKey = apiKeyInput.value.trim()
+
+              localStorage.setItem('machine-id', machineId)
+              localStorage.setItem('api-key', apiKey)
+
+
+              document.getElementById('loader').style.display = 'none'
+              document.getElementById('ctrls').style.display = 'flex'
+              refreshMachineStatus()
+            })
+            .catch(value => {
+              if (value.response.status === 404) {
+                machineIdInput.classList.add('invalid')
+                machineIdHelper.innerHTML = 'A machine with this ID does not exist'
+              } else if (value.response.status === 400 || value.response.status === 401 || value.response.status === 403) {
+                apiKeyInput.classList.add('invalid')
+                apiKeyHelper.innerHTML = 'The API key is not correct'
+              }
+              document.getElementById('login').style.display = 'flex'
+              document.getElementById('loader').style.display = 'none'
+            })
+        }
+      }
+
+      const logout = () => {
+        localStorage.clear()
+        document.getElementById('ctrls').style.display = 'none'
+        document.getElementById('login').style.display = 'flex'
+      }
+    </script>
+</head>
+<body>
+<section id="login">
+    <div class="input-field">
+        <i class="material-icons prefix">computer</i>
+        <input id="machineId" type="text" oninput="refreshSubmitLoginButton()">
+        <label for="machineId">Machine ID</label>
+        <span class="helper-text" id="machineId_helper"></span>
+    </div>
+    <div class="input-field">
+        <i class="material-icons prefix">vpn_key</i>
+        <input id="api-key" type="password" oninput="refreshSubmitLoginButton()">
+        <label for="api-key">API Key</label>
+        <span class="helper-text" id="api-key_helper"></span>
+    </div>
+    <button id="submitLogin" class="btn waves-effect" disabled onclick="login()"><i class="material-icons left">save</i>
+        Save
+        Credentials
+    </button>
+</section>
+<section id="loader" style="display: none;">
+    <div class="preloader-wrapper big active">
+        <div class="spinner-layer spinner-blue-only">
+            <div class="circle-clipper left">
+                <div class="circle"></div>
+            </div>
+            <div class="gap-patch">
+                <div class="circle"></div>
+            </div>
+            <div class="circle-clipper right">
+                <div class="circle"></div>
+            </div>
+        </div>
+    </div>
+</section>
+<section id="ctrls">
+    <br/>
+    <br/>
+    <br/>
+    <div>
+        <span id="machine-status"></span>
+        <button class="btn-flat waves-effect" onclick="refreshMachineStatus()"><i class="material-icons">refresh</i>
+        </button>
+    </div>
+    <button class="btn waves-effect light-green" id="start-button" onclick="startServer()"><i
+            class="material-icons left">play_arrow</i>
+        Start
+    </button>
+    <button class="btn waves-effect orange darken-4" id="stop-button" onclick="stopServer()"><i
+            class="material-icons left">stop</i> Stop
+    </button>
+    <br/>
+    <br/>
+    <br/>
+    <button class="btn-flat waves-effect" onclick="logout()"><i class="material-icons left">exit_to_app</i>Log Out
+    </button>
+</section>
+
+<script>
+  if (!machineId || !apiKey) {
+    document.getElementById('login').style.display = 'flex'
+    document.getElementById('ctrls').style.display = 'none'
+  } else {
+    document.getElementById('login').style.display = 'none'
+    document.getElementById('ctrls').style.display = 'flex'
+    refreshMachineStatus()
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+</body>
+</html>
